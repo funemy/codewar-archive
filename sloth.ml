@@ -25,11 +25,11 @@ struct
   type 'a t = unit -> 'a
   let mk x = x
   let get x = x()
-  let map f x = mk (fun () -> x() |> f)
   let return x = fun () -> x
-  let join y = y()
-  let bind f x = x() |> f
-  let (>>=) x f = x() |> f
+  let map f x = return (x |> get |> f)
+  let join y = get y
+  let bind f x = x |> get |> f
+  let (>>=) x f = x |> get |> f
   (* this is definitely wrong *)
   let rec tie f = tie f
 end;;
@@ -65,11 +65,11 @@ sig
   val tl: 'a stream -> 'a stream 
   val mk: (unit -> 'a * 'a stream) -> 'a stream
   val gen: ('a -> 'a) -> 'a L.t -> 'a stream
-  (* val map: ('a -> 'b) -> 'a stream -> 'b stream *)
-  (* val zip: 'a stream -> 'b stream -> ('a * 'b) stream *)
-  (* val zipWith: ('a * 'b -> 'c) -> 'a stream -> 'b stream -> 'c stream *)
-  (* val takeWhile: ('a -> bool) -> 'a stream -> 'a list *)
-  (* val app: 'a list -> 'a stream -> 'a stream *)
+  val map: ('a -> 'b) -> 'a stream -> 'b stream
+  val zip: 'a stream -> 'b stream -> ('a * 'b) stream
+  val zipWith: ('a * 'b -> 'c) -> 'a stream -> 'b stream -> 'c stream
+  val takeWhile: ('a -> bool) -> 'a stream -> 'a list
+  val app: 'a list -> 'a stream -> 'a stream
   (* fib = tie fib_aux *)
   (* val fib_aux: int stream -> int stream  *)
   (*traverse evey element of 'a stream that is in 'a stream 'stream*)
@@ -85,5 +85,18 @@ struct
   let tl = function
     | Stream lzy -> snd (L.get lzy)
   let mk f = Stream (L.mk f)
-  let rec gen f init = Stream (L.return (L.get init, gen f init))
+  let rec gen f init = Stream (L.return (L.get init, gen f (L.map f init)))
+  let rec map f s = Stream (L.return (s |> hd |> f, map f (tl s)))
+  let rec zip s1 s2 = Stream (L.return ((hd s1, hd s2), (zip (tl s1) (tl s2))))
+  let rec zipWith f s1 s2 = Stream (L.return ((f (hd s1, hd s2)), (zipWith f (tl s1) (tl s2))))
+  let takeWhile f s =
+    let rec aux res s =
+      let next = hd s in
+      if f next then aux (next :: res) (tl s)
+      else res
+    in aux [] s
+  (* append *)
+  let rec app l s = match l with
+    | [] -> s
+    | h :: t -> app t (Stream (L.return (h, s)))
 end;;
