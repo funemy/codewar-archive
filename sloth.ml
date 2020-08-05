@@ -17,7 +17,7 @@ sig
   val (>>=): 'a t -> ('a -> 'b t) -> 'b t
   (* The argument is a lazy value that might refer to itself.
    * Tie the value to itself using reference. *)
-  val tie: ('a t -> 'a t) -> 'a t 
+  (* val tie: ('a t -> 'a t) -> 'a t  *)
 end;;
 
 module LazyThunk: Lazy with type 'a t = unit -> 'a =
@@ -31,7 +31,7 @@ struct
   let bind f x = x |> get |> f
   let (>>=) x f = x |> get |> f
   (* this is definitely wrong *)
-  let rec tie f = tie f
+  (* let rec tie f = let rf = ref f in return (tie !rf) *)
 end;;
 
 (* However, the thunk need to be evaluated each time get is used,
@@ -70,7 +70,6 @@ sig
   val zipWith: ('a * 'b -> 'c) -> 'a stream -> 'b stream -> 'c stream
   val takeWhile: ('a -> bool) -> 'a stream -> 'a list
   val app: 'a list -> 'a stream -> 'a stream
-  (* fib = tie fib_aux *)
   (* val fib_aux: int stream -> int stream  *)
   (*traverse evey element of 'a stream that is in 'a stream 'stream*)
   (* val join: 'a stream stream -> 'a stream *)
@@ -85,10 +84,16 @@ struct
   let tl = function
     | Stream lzy -> snd (L.get lzy)
   let mk f = Stream (L.mk f)
-  let rec gen f init = Stream (L.return (L.get init, gen f (L.map f init)))
-  let rec map f s = Stream (L.return (s |> hd |> f, map f (tl s)))
-  let rec zip s1 s2 = Stream (L.return ((hd s1, hd s2), (zip (tl s1) (tl s2))))
-  let rec zipWith f s1 s2 = Stream (L.return ((f (hd s1, hd s2)), (zipWith f (tl s1) (tl s2))))
+  (* stupid mistake:
+     `let return x = fun () -> x` and 
+     `fun () -> x` 
+     are different!
+     Because when you call `return expr`
+     `expr` will be evaluated *)
+  let rec gen f init = mk (fun () -> (L.get init, gen f (L.map f init)))
+  let rec map f s = mk (fun () -> (s |> hd |> f, map f (tl s)))
+  let rec zip s1 s2 = mk (fun () -> ((hd s1, hd s2), (zip (tl s1) (tl s2))))
+  let rec zipWith f s1 s2 = mk (fun() -> ((f (hd s1, hd s2)), (zipWith f (tl s1) (tl s2))))
   let takeWhile f s =
     let rec aux res s =
       let next = hd s in
@@ -98,5 +103,6 @@ struct
   (* append *)
   let rec app l s = match l with
     | [] -> s
-    | h :: t -> app t (Stream (L.return (h, s)))
+    | h :: t -> app t (mk (fun () -> (h, s)))
+    (* let fib_aux is =  *)
 end;;
