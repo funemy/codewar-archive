@@ -17,7 +17,7 @@ sig
   val (>>=): 'a t -> ('a -> 'b t) -> 'b t
   (* The argument is a lazy value that might refer to itself.
    * Tie the value to itself using reference. *)
-  (* val tie: ('a t -> 'a t) -> 'a t  *)
+  val tie: ('a t -> 'a t) -> 'a t 
 end;;
 
 module LazyThunk: Lazy with type 'a t = unit -> 'a =
@@ -25,13 +25,13 @@ struct
   type 'a t = unit -> 'a
   let mk x = x
   let get x = x()
+  let map f x = mk (fun () -> f (get x))
   let return x = fun () -> x
-  let map f x = return (x |> get |> f)
   let join y = get y
   let bind f x = x |> get |> f
   let (>>=) x f = x |> get |> f
-  (* this is definitely wrong *)
-  (* let rec tie f = let rf = ref f in return (tie !rf) *)
+  (* still investigating *)
+  let rec tie f = f (mk (fun () -> (get (tie f))))
 end;;
 
 (* However, the thunk need to be evaluated each time get is used,
@@ -89,7 +89,7 @@ struct
      `fun () -> x` 
      are different!
      Because when you call `return expr`
-     `expr` will be evaluated *)
+     `expr` will be eagerly evaluated *)
   let rec gen f init = mk (fun () -> (L.get init, gen f (L.map f init)))
   let rec map f s = mk (fun () -> (s |> hd |> f, map f (tl s)))
   let rec zip s1 s2 = mk (fun () -> ((hd s1, hd s2), (zip (tl s1) (tl s2))))
@@ -104,5 +104,21 @@ struct
   let rec app l s = match l with
     | [] -> s
     | h :: t -> app t (mk (fun () -> (h, s)))
-    (* let fib_aux is =  *)
+    (* let fib_aux is = 
+       let rec aux is prev1 prev2 =  *)
 end;;
+
+module L = LazyThunk;;
+module S = Stream(L);;
+let test1 = S.gen (fun n -> 1 + n) (L.return 2);;
+
+let test_gen_takeWhile = S.takeWhile (fun n -> n < 10) (S.gen (fun n -> 1 + n) (L.return 2))
+let test_gen_takeWhile = List.fold_left (+) 0 test_gen_takeWhile
+
+let test_app = S.takeWhile (fun n -> n < 10) (S.app [1; 2] (S.gen (fun n -> 1 + n) (L.return 2)))
+let test_app = List.fold_left (+) 0 test_app
+
+(* let test_fib = (S.Stream (L.tie 
+                            (fun n -> 
+                               match S.fib_aux (S.Stream n) with 
+                                 S.Stream m -> m))) *)
