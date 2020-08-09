@@ -70,7 +70,7 @@ sig
   val zipWith: ('a * 'b -> 'c) -> 'a stream -> 'b stream -> 'c stream
   val takeWhile: ('a -> bool) -> 'a stream -> 'a list
   val app: 'a list -> 'a stream -> 'a stream
-  (* val fib_aux: int stream -> int stream  *)
+  val fib_aux: int stream -> int stream 
   (*traverse evey element of 'a stream that is in 'a stream 'stream*)
   (* val join: 'a stream stream -> 'a stream *)
 end;;
@@ -99,13 +99,17 @@ struct
       let next = hd s in
       if f next then aux (next :: res) (tl s)
       else res
-    in aux [] s
+    in List.rev (aux [] s)
   (* append *)
   let rec app l s = match l with
     | [] -> s
     | h :: t -> app t (mk (fun () -> (h, s)))
-    (* let fib_aux is = 
-       let rec aux is prev1 prev2 =  *)
+  let cons x s = mk (fun () -> x, s)
+  let fib_aux is = 
+    let rec aux prev1 prev2 is = 
+      (prev1 + prev2), mk (fun () -> aux prev2 (prev1 + prev2) is)
+    in
+    cons 0 (cons 1 (mk (fun () -> aux 0 1 is)))
 end;;
 
 module L = LazyThunk;;
@@ -118,7 +122,8 @@ let test_gen_takeWhile = List.fold_left (+) 0 test_gen_takeWhile
 let test_app = S.takeWhile (fun n -> n < 10) (S.app [1; 2] (S.gen (fun n -> 1 + n) (L.return 2)))
 let test_app = List.fold_left (+) 0 test_app
 
-(* let test_fib = (S.Stream (L.tie 
+let test_fib = (S.Stream (L.tie 
                             (fun n -> 
                                match S.fib_aux (S.Stream n) with 
-                                 S.Stream m -> m))) *)
+                                 S.Stream m -> m)))
+let test_fib = S.takeWhile (fun n -> n < 10) test_fib
