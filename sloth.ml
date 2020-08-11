@@ -27,9 +27,9 @@ struct
   let get x = x()
   let map f x = mk (fun () -> f (get x))
   let return x = fun () -> x
-  let join y = get y
-  let bind f x = x |> get |> f
-  let (>>=) x f = x |> get |> f
+  let join y = mk (fun () -> get (get y))
+  let bind f x = mk (fun () -> get (f (get x)))
+  let (>>=) x f = mk (fun () -> get (f (get x)))
   (* still investigating *)
   let rec tie f = let rf = ref f in !rf (mk (fun () -> get (tie !rf)))
 end;;
@@ -123,39 +123,42 @@ module L = LazyThunk;;
 module S = Stream(L);;
 let test1 = S.gen (fun n -> 1 + n) (L.return 2);;
 
-let test_gen_takeWhile = S.takeWhile (fun n -> n < 10) (S.gen (fun n -> 1 + n) (L.return 2))
-let test_gen_takeWhile = List.fold_left (+) 0 test_gen_takeWhile
+(* let test_gen_takeWhile = S.takeWhile (fun n -> n < 10) (S.gen (fun n -> 1 + n) (L.return 2))
+   let test_gen_takeWhile = List.fold_left (+) 0 test_gen_takeWhile
 
-let test_app = S.takeWhile (fun n -> n < 10) (S.app [1; 2] (S.gen (fun n -> 1 + n) (L.return 2)))
-let test_app = List.fold_left (+) 0 test_app
+   let test_app = S.takeWhile (fun n -> n < 10) (S.app [1; 2] (S.gen (fun n -> 1 + n) (L.return 2)))
+   let test_app = List.fold_left (+) 0 test_app
 
-let test_fib = (S.Stream (L.tie 
+   let test_fib = (S.Stream (L.tie 
                             (fun n -> 
                                match S.fib_aux (S.Stream n) with 
                                  S.Stream m -> m)))
-let test_fib = S.takeWhile (fun n -> n < 10) test_fib
+   let test_fib = S.takeWhile (fun n -> n < 10) test_fib
 
-let test_map = (S.takeWhile
+   let test_map = (S.takeWhile
                   (fun n -> n < 10)
                   (S.map (fun n -> n - 1)
                      (S.gen (fun n -> 1 + n) (L.return 2))))
 
-let test_map = (List.fold_left (+) 0 
+   let test_map = (List.fold_left (+) 0 
                   (S.takeWhile
                      (fun n -> n < 10)
                      (S.map (fun n -> n - 1)
                         (S.gen (fun n -> 1 + n) (L.return 2)))))
 
-let test_map2 = (S.map
+   let test_map2 = (S.map
                    (fun l -> S.map
                        (fun r -> (l, r))
                        (S.gen (fun n -> 1 + n) (L.return 0)))
                    (S.gen (fun n -> 1 + n) (L.return 0)))
 
-let test_join = (S.join (S.map
+   let test_join = (S.join (S.map
                            (fun l -> S.map
                                (fun r -> (l, r))
                                (S.gen (fun n -> 1 + n) (L.return 0)))
                            (S.gen (fun n -> 1 + n) (L.return 0))))
 
-let test_join = S.takeWhile (fun n -> n <>  (2, 2)) test_join
+   let test_join = S.takeWhile (fun n -> n <>  (3, 3)) test_join *)
+
+(* let r = ref 0
+   let mk r = L.mk (fun _ -> r := (!r) + 1) *)
