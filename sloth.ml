@@ -26,11 +26,10 @@ struct
   let mk x = x
   let get x = x()
   let map f x = mk (fun () -> f (get x))
-  let return x = fun () -> x
-  let join y = mk (fun () -> get (get y))
+  let return x = mk (fun () -> x)
+  let join xx = mk (fun () -> get (get xx))
   let bind f x = mk (fun () -> get (f (get x)))
   let (>>=) x f = mk (fun () -> get (f (get x)))
-  (* still investigating *)
   let rec tie f = let rf = ref f in !rf (mk (fun () -> get (tie !rf)))
 end;;
 
@@ -38,9 +37,23 @@ end;;
  * instead of at most once. This is outrageous! This is unfair!
  * It can be fixed by caching the result - the thunk is only evaluated
  * if the cache is empty. *)
-(* module LazyOption: Lazy with type 'a t = 'a option ref * (unit -> 'a) =
-   struct
-   end;; *)
+module LazyOption: Lazy with type 'a t = 'a option ref * (unit -> 'a) =
+struct
+  type 'a t = 'a option ref * (unit -> 'a)
+  let mk x = ref None, x
+  let get x = let cache = fst x in
+    match !cache with
+    | None -> let v = (snd x)() in
+      cache := Some v; v
+    | Some v -> v
+  let map f x = mk (fun () -> f (get x))
+  let return x = mk (fun () -> x)
+  let join xx = mk (fun () -> get (get xx))
+  let bind f x = mk (fun () -> get (f (get x)))
+  let bind f x = mk (fun () -> get (f (get x)))
+  let (>>=) x f = mk (fun () -> get (f (get x)))
+  let rec tie f = let rf = ref f in !rf (mk (fun () -> get (tie !rf)))
+end;;
 
 (* Notice how there is two components for a Lazy: a thunk and a cache.
  * Here is a pretty cool trick: instead of having two components,
@@ -119,46 +132,47 @@ struct
     in aux_x ss []
 end;;
 
-module L = LazyThunk;;
+module L = LazyOption;;
 module S = Stream(L);;
+
 let test1 = S.gen (fun n -> 1 + n) (L.return 2);;
 
-(* let test_gen_takeWhile = S.takeWhile (fun n -> n < 10) (S.gen (fun n -> 1 + n) (L.return 2))
-   let test_gen_takeWhile = List.fold_left (+) 0 test_gen_takeWhile
+let test_gen_takeWhile = S.takeWhile (fun n -> n < 10) (S.gen (fun n -> 1 + n) (L.return 2))
+let test_gen_takeWhile = List.fold_left (+) 0 test_gen_takeWhile
 
-   let test_app = S.takeWhile (fun n -> n < 10) (S.app [1; 2] (S.gen (fun n -> 1 + n) (L.return 2)))
-   let test_app = List.fold_left (+) 0 test_app
+let test_app = S.takeWhile (fun n -> n < 10) (S.app [1; 2] (S.gen (fun n -> 1 + n) (L.return 2)))
+let test_app = List.fold_left (+) 0 test_app
 
-   let test_fib = (S.Stream (L.tie 
+let test_fib = (S.Stream (L.tie 
                             (fun n -> 
                                match S.fib_aux (S.Stream n) with 
                                  S.Stream m -> m)))
-   let test_fib = S.takeWhile (fun n -> n < 10) test_fib
+let test_fib = S.takeWhile (fun n -> n < 10) test_fib
 
-   let test_map = (S.takeWhile
+let test_map = (S.takeWhile
                   (fun n -> n < 10)
                   (S.map (fun n -> n - 1)
                      (S.gen (fun n -> 1 + n) (L.return 2))))
 
-   let test_map = (List.fold_left (+) 0 
+let test_map = (List.fold_left (+) 0 
                   (S.takeWhile
                      (fun n -> n < 10)
                      (S.map (fun n -> n - 1)
                         (S.gen (fun n -> 1 + n) (L.return 2)))))
 
-   let test_map2 = (S.map
+let test_map2 = (S.map
                    (fun l -> S.map
                        (fun r -> (l, r))
                        (S.gen (fun n -> 1 + n) (L.return 0)))
                    (S.gen (fun n -> 1 + n) (L.return 0)))
 
-   let test_join = (S.join (S.map
+let test_join = (S.join (S.map
                            (fun l -> S.map
                                (fun r -> (l, r))
                                (S.gen (fun n -> 1 + n) (L.return 0)))
                            (S.gen (fun n -> 1 + n) (L.return 0))))
 
-   let test_join = S.takeWhile (fun n -> n <>  (3, 3)) test_join *)
+let test_join = S.takeWhile (fun n -> n <>  (3, 3)) test_join
 
 (* let r = ref 0
    let mk r = L.mk (fun _ -> r := (!r) + 1) *)
