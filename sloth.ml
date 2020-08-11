@@ -31,7 +31,7 @@ struct
   let bind f x = x |> get |> f
   let (>>=) x f = x |> get |> f
   (* still investigating *)
-  let rec tie f = f (mk (fun () -> (get (tie f))))
+  let rec tie f = let rf = ref f in !rf (mk (fun () -> get (tie !rf)))
 end;;
 
 (* However, the thunk need to be evaluated each time get is used,
@@ -72,7 +72,7 @@ sig
   val app: 'a list -> 'a stream -> 'a stream
   val fib_aux: int stream -> int stream 
   (*traverse evey element of 'a stream that is in 'a stream 'stream*)
-  (* val join: 'a stream stream -> 'a stream *)
+  val join: 'a stream stream -> 'a stream
 end;;
 
 module Stream (L: Lazy): StreamSig with module L = L =
@@ -110,6 +110,13 @@ struct
       (prev1 + prev2), mk (fun () -> aux prev2 (prev1 + prev2) is)
     in
     cons 0 (cons 1 (mk (fun () -> aux 0 1 is)))
+  let join ss = 
+    let rec aux_xy ss next pending = match pending with
+      | [] -> aux_x ss next
+      | h :: t -> mk (fun () -> (hd h), aux_xy ss (tl h :: next) t)
+    and aux_x ss next =
+      aux_xy (tl ss) [] (hd ss :: (List.rev next))
+    in aux_x ss []
 end;;
 
 module L = LazyThunk;;
@@ -127,3 +134,28 @@ let test_fib = (S.Stream (L.tie
                                match S.fib_aux (S.Stream n) with 
                                  S.Stream m -> m)))
 let test_fib = S.takeWhile (fun n -> n < 10) test_fib
+
+let test_map = (S.takeWhile
+                  (fun n -> n < 10)
+                  (S.map (fun n -> n - 1)
+                     (S.gen (fun n -> 1 + n) (L.return 2))))
+
+let test_map = (List.fold_left (+) 0 
+                  (S.takeWhile
+                     (fun n -> n < 10)
+                     (S.map (fun n -> n - 1)
+                        (S.gen (fun n -> 1 + n) (L.return 2)))))
+
+let test_map2 = (S.map
+                   (fun l -> S.map
+                       (fun r -> (l, r))
+                       (S.gen (fun n -> 1 + n) (L.return 0)))
+                   (S.gen (fun n -> 1 + n) (L.return 0)))
+
+let test_join = (S.join (S.map
+                           (fun l -> S.map
+                               (fun r -> (l, r))
+                               (S.gen (fun n -> 1 + n) (L.return 0)))
+                           (S.gen (fun n -> 1 + n) (L.return 0))))
+
+let test_join = S.takeWhile (fun n -> n <>  (2, 2)) test_join
