@@ -5,11 +5,16 @@
 (* Note that you should not use reference unless we explicitly ask for it.
  * Also, whenever you construct a lazy value, make sure to defer
  * all calculation as late as possible *)
-module type Lazy = 
+module type LazyCore = 
 sig
   type _ t
   val mk: (unit -> 'a) -> 'a t
   val get: 'a t -> 'a
+end;;
+
+module type Lazy = 
+sig
+  include LazyCore
   val map: ('a -> 'b) -> 'a t -> 'b t
   val return: 'a -> 'a t
   val join: 'a t t -> 'a t
@@ -20,11 +25,10 @@ sig
   val tie: ('a t -> 'a t) -> 'a t 
 end;;
 
-module LazyThunk: Lazy with type 'a t = unit -> 'a =
+(* implementation *)
+module LazyTrait(Core: LazyCore): Lazy with type 'a t = 'a Core.t =
 struct
-  type 'a t = unit -> 'a
-  let mk x = x
-  let get x = x()
+  include Core
   let map f x = mk (fun () -> f (get x))
   let return x = mk (fun () -> x)
   let join xx = mk (fun () -> get (get xx))
@@ -34,11 +38,20 @@ struct
     r := (mk (fun () -> get (f !r))); !r
 end;;
 
+module LazyCoreThunk: LazyCore with type 'a t = unit -> 'a =
+struct
+  type 'a t = unit -> 'a
+  let mk x = x
+  let get x = x()
+end;;
+
+module LazyThunk = LazyTrait(LazyCoreThunk)
+
 (* However, the thunk need to be evaluated each time get is used,
  * instead of at most once. This is outrageous! This is unfair!
  * It can be fixed by caching the result - the thunk is only evaluated
  * if the cache is empty. *)
-module LazyOption: Lazy with type 'a t = 'a option ref * (unit -> 'a) =
+module LazyCoreOption: LazyCore with type 'a t = 'a option ref * (unit -> 'a) =
 struct
   type 'a t = 'a option ref * (unit -> 'a)
   let mk x = ref None, x
@@ -47,15 +60,9 @@ struct
     | None -> let v = (snd x)() in
       cache := Some v; v
     | Some v -> v
-  let map f x = mk (fun () -> f (get x))
-  let return x = mk (fun () -> x)
-  let join xx = mk (fun () -> get (get xx))
-  let bind f x = mk (fun () -> get (f (get x)))
-  let bind f x = mk (fun () -> get (f (get x)))
-  let (>>=) x f = mk (fun () -> get (f (get x)))
-  let tie f = let r = ref (mk (fun () -> failwith "uninitialized")) in 
-    r := (mk (fun () -> get (f !r))); !r
 end;;
+
+module LazyOption = LazyTrait(LazyCoreOption)
 
 (* Notice how there is two components for a Lazy: a thunk and a cache.
  * Here is a pretty cool trick: instead of having two components,
@@ -63,21 +70,15 @@ end;;
  * This is called tagless because we no longer use algebraic data type,
  * which tag the value.
  * We just have a uniform way to handle the value. *)
-module LazyTagless: Lazy with type 'a t = (unit -> 'a) ref = 
+module LazyCoreTagless: LazyCore with type 'a t = (unit -> 'a) ref = 
 struct
   type 'a t = (unit -> 'a) ref
   let mk x = ref x
   let get x = let v = !x() in
     x := (fun () -> v); v
-  let map f x = mk (fun () -> f (get x))
-  let return x = mk (fun () -> x)
-  let join xx = mk (fun () -> get (get xx))
-  let bind f x = mk (fun () -> get (f (get x)))
-  let bind f x = mk (fun () -> get (f (get x)))
-  let (>>=) x f = mk (fun () -> get (f (get x)))
-  let tie f = let r = ref (mk (fun () -> failwith "uninitialized")) in 
-    r := (mk (fun () -> get (f !r))); !r
 end;;
+
+module LazyTagless = LazyTrait(LazyCoreTagless)
 
 (* Notice how most definition of lazy can be derived from other?
  * Try to lookup how module works and refactor them. *)
