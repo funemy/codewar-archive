@@ -35,6 +35,15 @@ struct
   let bind f x = mk (fun () -> get (f (get x)))
   let (>>=) x f = mk (fun () -> get (f (get x)))
   let tie f = let r = ref (mk (fun () -> failwith "uninitialized")) in 
+    (* This line is very tricky, 
+     * The recurrence of `r` is the key of fib_aux.
+     * after making this thunk, the ref `r` points to the start of this thunk,
+     * i.e., the start of the (int * int stream) 
+     * So that later when fib_aux, and internally zipWith are called, 
+     * the argument `s` points to the start of the whole stream [0, 1, <thunk>]
+     *
+     * In this way, we make an equivalent implementation as haskell's
+     * `fibs = 0 : 1 : (zipWith (+) fibs (tail fibs)`, where `fibs` is also a shared thunk *)
     r := (mk (fun () -> get (f !r))); !r
 end;;
 
@@ -138,6 +147,8 @@ struct
       (prev1 + prev2), mk (fun () -> aux prev2 (prev1 + prev2) is)
     in
     cons 0 (cons 1 (mk (fun () -> aux 0 1 is)))
+  (* Here `s` is shared, because it is `!r` (see the implementation of `tie`) 
+   * So the evaluation result of `app` and `zipWith` will reflect on stream `s` *)
   let fib_aux s = app [0;1] (zipWith (fun (l, r) -> l + r) s (tl s))
   let join ss = 
     let rec aux_xy ss next pending = match pending with
