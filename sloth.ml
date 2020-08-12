@@ -30,7 +30,8 @@ struct
   let join xx = mk (fun () -> get (get xx))
   let bind f x = mk (fun () -> get (f (get x)))
   let (>>=) x f = mk (fun () -> get (f (get x)))
-  let rec tie f = let rf = ref f in !rf (mk (fun () -> get (tie !rf)))
+  let tie f = let r = ref (mk (fun () -> failwith "uninitialized")) in 
+    r := (mk (fun () -> get (f !r))); !r
 end;;
 
 (* However, the thunk need to be evaluated each time get is used,
@@ -52,7 +53,8 @@ struct
   let bind f x = mk (fun () -> get (f (get x)))
   let bind f x = mk (fun () -> get (f (get x)))
   let (>>=) x f = mk (fun () -> get (f (get x)))
-  let rec tie f = let rf = ref f in !rf (mk (fun () -> get (tie !rf)))
+  let tie f = let r = ref (mk (fun () -> failwith "uninitialized")) in 
+    r := (mk (fun () -> get (f !r))); !r
 end;;
 
 (* Notice how there is two components for a Lazy: a thunk and a cache.
@@ -61,9 +63,21 @@ end;;
  * This is called tagless because we no longer use algebraic data type,
  * which tag the value.
  * We just have a uniform way to handle the value. *)
-(* module LazyTagless: Lazy with type 'a t = (unit -> 'a) ref = 
-   struct
-   end;; *)
+module LazyTagless: Lazy with type 'a t = (unit -> 'a) ref = 
+struct
+  type 'a t = (unit -> 'a) ref
+  let mk x = ref x
+  let get x = let v = !x() in
+    x := (fun () -> v); v
+  let map f x = mk (fun () -> f (get x))
+  let return x = mk (fun () -> x)
+  let join xx = mk (fun () -> get (get xx))
+  let bind f x = mk (fun () -> get (f (get x)))
+  let bind f x = mk (fun () -> get (f (get x)))
+  let (>>=) x f = mk (fun () -> get (f (get x)))
+  let tie f = let r = ref (mk (fun () -> failwith "uninitialized")) in 
+    r := (mk (fun () -> get (f !r))); !r
+end;;
 
 (* Notice how most definition of lazy can be derived from other?
  * Try to lookup how module works and refactor them. *)
@@ -92,11 +106,11 @@ module Stream (L: Lazy): StreamSig with module L = L =
 struct
   module L = L
   type 'a stream = Stream of ('a * 'a stream) L.t
-  let hd = function
-    | Stream lzy -> fst (L.get lzy)
-  let tl = function
-    | Stream lzy -> snd (L.get lzy)
   let mk f = Stream (L.mk f)
+  let hd (Stream x) = fst (L.get x)
+  (* this is the laziest form *)
+  let tl (Stream x) = mk (fun () -> 
+      match snd (L.get x) with Stream s -> L.get s)
   (* stupid mistake:
      `let return x = fun () -> x` and 
      `fun () -> x` 
@@ -116,13 +130,14 @@ struct
   (* append *)
   let rec app l s = match l with
     | [] -> s
-    | h :: t -> app t (mk (fun () -> (h, s)))
-  let cons x s = mk (fun () -> x, s)
-  let fib_aux is = 
+    | h :: t -> (mk (fun () -> h, app t s))
+  let fib_aux' is = 
+    let cons x s = mk (fun () -> x, s) in
     let rec aux prev1 prev2 is = 
       (prev1 + prev2), mk (fun () -> aux prev2 (prev1 + prev2) is)
     in
     cons 0 (cons 1 (mk (fun () -> aux 0 1 is)))
+  let fib_aux s = app [0;1] (zipWith (fun (l, r) -> l + r) s (tl s))
   let join ss = 
     let rec aux_xy ss next pending = match pending with
       | [] -> aux_x ss next
@@ -132,7 +147,7 @@ struct
     in aux_x ss []
 end;;
 
-module L = LazyOption;;
+module L = LazyTagless;;
 module S = Stream(L);;
 
 let test1 = S.gen (fun n -> 1 + n) (L.return 2);;
