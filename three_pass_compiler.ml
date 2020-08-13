@@ -45,7 +45,7 @@ exception CompilerError of string
 module type COMPILER =
 sig
   val pass1: string -> ast
-  (* val pass2: ast -> ast *)
+  val pass2: ast -> ast
   (* val codeGen: ast -> string list *)
   (* val compile: string -> string list  *)
 end;;
@@ -62,7 +62,6 @@ struct
       | h :: t -> parse_args t (h :: res)
       | _ -> raise (CompilerError "parse arg list error") in
     let prog, args = parse_args token [] in
-    print_list args;
     (* find argument index *)
     let arg_no s =
       let rec aux s i = function
@@ -92,6 +91,7 @@ struct
       | "*" :: t -> process_term (process_op factor "*") t
       | "/" :: t -> process_term (process_op factor "/") t
       | ops -> factor, ops in
+    (* finish traversing the token list, genereate the final ast *)
     let rec process_all factor ops = 
       match ops with
       | h :: t -> process_all (process_op factor h) t
@@ -111,8 +111,16 @@ struct
       | [] -> process_all factor ops
     in parse prog [] []
 
-  (* let pass2 ast =
-     raise (CompilerError "missing implementation")   *)
+  let rec pass2 ast = 
+    match ast with
+    | Add a -> eval ( + ) (fun x -> Add x) a
+    | Sub a -> eval ( - ) (fun x -> Sub x) a
+    | Mul a -> eval ( * ) (fun x -> Mul x) a
+    | Div a -> eval ( / ) (fun x -> Div x) a
+    | ast -> ast
+  and eval f ctor (a1, a2) = match (pass2 a1), (pass2 a2) with
+    | Imm i1, Imm i2 -> Imm (f i1 i2)
+    | a1, a2 -> ctor (a1, a2)
 
   (* let codeGen = 
      raise (CompilerError "missing implementation") *)
@@ -123,6 +131,9 @@ end;;
 
 let test_pass1 = Compiler.pass1 "[ x y ] 2 / y + x"
 let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2"
+let test_pass1 = Compiler.pass1 "[ x ] x + 2*5"
+
+let test_pass2 = Compiler.pass2 test_pass1
 
 (* let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2" *)
 
