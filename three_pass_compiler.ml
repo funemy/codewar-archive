@@ -75,15 +75,15 @@ struct
         | f1 :: f2 :: t -> f1, f2, t
         | _ -> raise (CompilerError ("PARSING ERROR: not enough operand for " ^ op)) in 
       let tem = match op with
-        | "+" -> Add (f2, f1) 
-        | "-" -> Sub (f2, f1) 
-        | "*" -> Mul (f2, f1) 
-        | "/" -> Div (f2, f1)
+        | "+" -> Add (f1, f2) 
+        | "-" -> Sub (f1, f2) 
+        | "*" -> Mul (f1, f2) 
+        | "/" -> Div (f1, f2)
         | _ -> raise (CompilerError ("PARSING ERROR: unsupported operator " ^ op)) in
       tem :: t in
     (* process the program inside a pair of parentheses *)
     let rec process_paren factor ops = match ops with
-      | "(" :: t -> factor, t
+      | ")" :: t -> factor, t
       | h :: t -> process_paren (process_op factor h) t
       | _ -> raise (CompilerError "PARSING ERROR: parentheses mismatch") in
     (* process all * and / operators on the top of the stack *)
@@ -99,8 +99,8 @@ struct
           | [f] -> f
           | _ -> raise (CompilerError "PARSING ERROR: incomplete program")) in
     let rec parse p factor ops = match p with
-      | "(" :: t -> parse t factor ("(" :: ops)
-      | ")" :: t -> let f, o = process_paren factor ops in parse t f o
+      | ")" :: t -> parse t factor (")" :: ops)
+      | "(" :: t -> let f, o = process_paren factor ops in parse t f o
       | "+" :: t -> let f, o = process_term factor ops in parse t f ("+" :: o)
       | "-" :: t -> let f, o = process_term factor ops in parse t f ("-" :: o)
       | "*" :: t -> parse t factor ("*" :: ops)
@@ -109,7 +109,7 @@ struct
           | None -> parse t ((Arg (arg_no h)) :: factor) ops
           | Some i -> parse t ((Imm i) :: factor) ops)
       | [] -> process_all factor ops
-    in parse prog [] []
+    in parse (List.rev prog) [] []
 
 
   let rec pass2 ast = 
@@ -141,6 +141,7 @@ end;;
 let test_pass1 = Compiler.pass1 "[ x y ] 2 / y + x"
 let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2"
 let test_pass1 = Compiler.pass1 "[ x ] x + 2*5"
+let test_pass1 = Compiler.pass1 "[ x y z ] ( 2*3*x + 5*y - 3*z ) / (1 + 3 + 2*2)"
 
 
 (* let test_pass2 = Compiler.pass2 test_pass1
