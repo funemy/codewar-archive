@@ -46,8 +46,8 @@ module type COMPILER =
 sig
   val pass1: string -> ast
   val pass2: ast -> ast
-  (* val codeGen: ast -> string list *)
-  (* val compile: string -> string list  *)
+  val codeGen: ast -> string list
+  val compile: string -> string list 
 end;;
 
 
@@ -111,6 +111,7 @@ struct
       | [] -> process_all factor ops
     in parse prog [] []
 
+
   let rec pass2 ast = 
     match ast with
     | Add a -> eval ( + ) (fun x -> Add x) a
@@ -118,15 +119,22 @@ struct
     | Mul a -> eval ( * ) (fun x -> Mul x) a
     | Div a -> eval ( / ) (fun x -> Div x) a
     | ast -> ast
+  (* to save some space  *)
   and eval f ctor (a1, a2) = match (pass2 a1), (pass2 a2) with
     | Imm i1, Imm i2 -> Imm (f i1 i2)
     | a1, a2 -> ctor (a1, a2)
 
-  (* let codeGen = 
-     raise (CompilerError "missing implementation") *)
 
-  (* let compile code =
-     codeGen(pass2(pass1 code)) *)
+  let codeGen ast = 
+    let rec aux ast res = match ast with
+      | Imm i -> "SW" :: ("IM " ^ string_of_int i) :: res
+      | Arg n -> ("AR " ^ string_of_int n) :: res
+      | Add (a1, a2) -> "AD" :: (aux a1 (aux a2 res))
+      | _ -> raise (CompilerError "unimplemented")
+    in List.rev (aux ast [])
+
+  let compile code =
+    codeGen(pass2(pass1 code))
 end;;
 
 let test_pass1 = Compiler.pass1 "[ x y ] 2 / y + x"
@@ -134,6 +142,7 @@ let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2"
 let test_pass1 = Compiler.pass1 "[ x ] x + 2*5"
 
 let test_pass2 = Compiler.pass2 test_pass1
+let test_pass3 = Compiler.codeGen test_pass2
 
 (* let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2" *)
 
