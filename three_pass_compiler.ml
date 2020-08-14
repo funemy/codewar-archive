@@ -127,12 +127,38 @@ struct
 
   (* This is incomplete *)
   let codeGen ast = 
-    let rec aux ast res = match ast with
-      | Imm i -> "SW" :: ("IM " ^ string_of_int i) :: res
-      | Arg n -> ("AR " ^ string_of_int n) :: res
-      | Add (a1, a2) -> "AD" :: (aux a1 (aux a2 res))
-      | _ -> raise (CompilerError "unimplemented")
-    in List.rev (aux ast [])
+    let rec aux ast (res, (r0, r1)) = match ast with
+      | Imm i -> let inst = ("IM " ^ string_of_int i) in
+        (match (r0, r1) with
+         | (true, _) -> inst :: res, (false, r1)
+         | (false, true) -> inst :: "SW" :: res, (false, false)
+         | (false, false) -> inst :: "PU" :: "SW" :: res, (false, false))
+      | Arg i -> let inst = ("AR " ^ string_of_int i) in
+        (match (r0, r1) with
+         | (true, _) -> inst :: res, (false, r1)
+         | (false, true) -> inst :: "SW" :: res, (false, false)
+         | (false, false) -> inst :: "PU" :: "SW" :: res, (false, false))
+      | Add (a1, a2) -> let tem, rs = aux a2 (aux a1 (res, (r0, r1))) in
+        (match rs with
+         | (false, false) -> "AD" :: tem, (false, true)
+         | (false, true) -> "AD" :: "PO" :: "SW" :: tem, (false, true)
+         | _ -> raise (CompilerError "imppossible"))
+      | Mul (a1, a2) -> let tem, rs = aux a2 (aux a1 (res, (r0, r1))) in
+        (match rs with
+         | (false, false) -> "MU" :: tem, (false, true)
+         | (false, true) -> "MU" :: "PO" :: "SW" :: tem, (false, true)
+         | _ -> raise (CompilerError "imppossible"))
+      | Sub (a1, a2) -> let tem, rs = aux a2 (aux a1 (res, (r0, r1))) in
+        (match rs with
+         | (false, false) -> "SU" :: "SW" :: tem, (false, true)
+         | (false, true) -> "SU" :: "PO" :: "SW" :: tem, (false, true)
+         | _ -> raise (CompilerError "imppossible"))
+      | Div (a1, a2) -> let tem, rs = aux a2 (aux a1 (res, (r0, r1))) in
+        (match rs with
+         | (false, false) -> "DI" :: "SW" :: tem, (false, true)
+         | (false, true) -> "DI" :: "PO" :: "SW" :: tem, (false, true)
+         | _ -> raise (CompilerError "imppossible"))
+    in (aux ast ([], (true, true))) |> fst |> List.rev
 
   let compile code =
     codeGen(pass2(pass1 code))
@@ -144,8 +170,8 @@ let test_pass1 = Compiler.pass1 "[ x ] x + 2*5"
 let test_pass1 = Compiler.pass1 "[ x y z ] ( 2*3*x + 5*y - 3*z ) / (1 + 3 + 2*2)"
 
 
-(* let test_pass2 = Compiler.pass2 test_pass1
-   let test_pass3 = Compiler.codeGen test_pass2 *)
+let test_pass2 = Compiler.pass2 test_pass1
+let test_pass3 = Compiler.codeGen test_pass2
 
 (* let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2" *)
 
