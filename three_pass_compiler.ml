@@ -125,6 +125,7 @@ struct
     | a1, a2 -> ctor (a1, a2)
 
 
+  (* This is incomplete *)
   let codeGen ast = 
     let rec aux ast res = match ast with
       | Imm i -> "SW" :: ("IM " ^ string_of_int i) :: res
@@ -141,8 +142,9 @@ let test_pass1 = Compiler.pass1 "[ x y ] 2 / y + x"
 let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2"
 let test_pass1 = Compiler.pass1 "[ x ] x + 2*5"
 
-let test_pass2 = Compiler.pass2 test_pass1
-let test_pass3 = Compiler.codeGen test_pass2
+
+(* let test_pass2 = Compiler.pass2 test_pass1
+   let test_pass3 = Compiler.codeGen test_pass2 *)
 
 (* let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2" *)
 
