@@ -125,7 +125,7 @@ struct
     | a1, a2 -> ctor (a1, a2)
 
 
-  (* This is incomplete *)
+  (* This can be simplifed if we don't mind some redundant push and pop *)
   let codeGen ast = 
     let rec aux ast (res, (r0, r1)) = match ast with
       | Imm i -> let inst = ("IM " ^ string_of_int i) in
@@ -138,26 +138,18 @@ struct
          | (true, _) -> inst :: res, (false, r1)
          | (false, true) -> inst :: "SW" :: res, (false, false)
          | (false, false) -> inst :: "PU" :: "SW" :: res, (false, false))
-      | Add (a1, a2) -> let tem, rs = aux a2 (aux a1 (res, (r0, r1))) in
-        (match rs with
-         | (false, false) -> "AD" :: tem, (false, true)
-         | (false, true) -> "AD" :: "PO" :: "SW" :: tem, (false, true)
-         | _ -> raise (CompilerError "imppossible"))
-      | Mul (a1, a2) -> let tem, rs = aux a2 (aux a1 (res, (r0, r1))) in
-        (match rs with
-         | (false, false) -> "MU" :: tem, (false, true)
-         | (false, true) -> "MU" :: "PO" :: "SW" :: tem, (false, true)
-         | _ -> raise (CompilerError "imppossible"))
-      | Sub (a1, a2) -> let tem, rs = aux a2 (aux a1 (res, (r0, r1))) in
-        (match rs with
-         | (false, false) -> "SU" :: "SW" :: tem, (false, true)
-         | (false, true) -> "SU" :: "PO" :: "SW" :: tem, (false, true)
-         | _ -> raise (CompilerError "imppossible"))
-      | Div (a1, a2) -> let tem, rs = aux a2 (aux a1 (res, (r0, r1))) in
-        (match rs with
-         | (false, false) -> "DI" :: "SW" :: tem, (false, true)
-         | (false, true) -> "DI" :: "PO" :: "SW" :: tem, (false, true)
-         | _ -> raise (CompilerError "imppossible"))
+      | Add (a1, a2) -> let tem, (_, r1) = aux a2 (aux a1 (res, (r0, r1))) in
+        let inst = if not r1 then ["AD"] else ["AD"; "PO"; "SW"] in
+        inst @ tem, (false, true)
+      | Mul (a1, a2) -> let tem, (_, r1) = aux a2 (aux a1 (res, (r0, r1))) in
+        let inst = if not r1 then ["MU"] else ["MU"; "PO"; "SW"] in
+        inst @ tem, (false, true)
+      | Sub (a1, a2) -> let tem, (_, r1) = aux a2 (aux a1 (res, (r0, r1))) in
+        let inst = if not r1 then ["SU"; "SW"] else ["SU"; "PO"; "SW"] in
+        inst @ tem, (false, true)
+      | Div (a1, a2) -> let tem, (_, r1) = aux a2 (aux a1 (res, (r0, r1))) in
+        let inst = if not r1 then ["DI"; "SW"] else ["DI"; "PO"; "SW"] in
+        inst @ tem, (false, true)
     in (aux ast ([], (true, true))) |> fst |> List.rev
 
   let compile code =
@@ -167,7 +159,7 @@ end;;
 let test_pass1 = Compiler.pass1 "[ x y ] 2 / y + x"
 let test_pass1 = Compiler.pass1 "[ x y ] ( x + y ) / 2"
 let test_pass1 = Compiler.pass1 "[ x ] x + 2*5"
-let test_pass1 = Compiler.pass1 "[ x y z ] ( 2*3*x + 5*y - 3*z ) / (1 + 3 + 2*2)"
+(* let test_pass1 = Compiler.pass1 "[ x y z ] ( 2*3*x + 5*y - 3*z ) / (1 + 3 + 2*2)" *)
 
 
 let test_pass2 = Compiler.pass2 test_pass1
